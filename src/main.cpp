@@ -36,7 +36,13 @@ int main(int argc, char* argv[]) {
       png_files.push_back(entry.path().string());
     }
   }
-  std::sort(png_files.begin(), png_files.end());
+  // Numeric sort: extract number from filename stem (e.g. "123.png" → 123)
+  std::sort(png_files.begin(), png_files.end(), [](const std::string& a, const std::string& b) {
+    auto num = [](const std::string& p) {
+      return std::stoi(fs::path(p).stem().string());
+    };
+    return num(a) < num(b);
+  });
 
   if (png_files.empty()) {
     std::cerr << "No PNG files found in " << png_dir << std::endl;

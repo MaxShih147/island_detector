@@ -75,7 +75,7 @@ def run_detection(png_dir: str, stride: int = 1):
     """Load PNGs and detect islands across all layer pairs."""
     png_files = sorted(
         [f for f in Path(png_dir).glob("*.png")],
-        key=lambda p: p.name,
+        key=lambda p: int(p.stem),
     )
 
     if len(png_files) < 2:
