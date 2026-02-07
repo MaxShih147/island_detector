@@ -156,6 +156,73 @@ def visualize_results(all_results, images, png_files, layer_height: float):
     plt.show()
 
 
+def contour_to_world(contour_px, img_w, img_h, display_w, display_h):
+    """Convert pixel contour (Nx2) to physical mm coordinates (Nx2).
+
+    Maps pixel space to display physical space centered at origin:
+      world_x = (px / img_w) * display_w - display_w / 2
+      world_y = display_h / 2 - (py / img_h) * display_h   (Y inverted)
+    """
+    px = contour_px[:, 0].astype(float)
+    py = contour_px[:, 1].astype(float)
+    world_x = (px / img_w) * display_w - display_w / 2
+    world_y = display_h / 2 - (py / img_h) * display_h
+    return np.column_stack([world_x, world_y])
+
+
+def visualize_3d(all_results, images, layer_height: float,
+                 display_w: float = 68.04, display_h: float = 120.96):
+    """3D plot of island contours at their world-space Z positions."""
+    if not all_results:
+        print("No islands to show in 3D.")
+        return
+
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+    img_h, img_w = images[0].shape[:2]
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection="3d")
+
+    colors = plt.cm.tab10.colors
+    global_idx = 0
+
+    for layer_idx, islands in all_results:
+        z = layer_idx * layer_height
+
+        for isl in islands:
+            contour_px = isl["contour"]
+            world_xy = contour_to_world(contour_px, img_w, img_h, display_w, display_h)
+
+            # Close the polygon
+            pts = np.vstack([world_xy, world_xy[0:1]])
+            zs = np.full(len(pts), z)
+
+            color = colors[global_idx % len(colors)]
+
+            # Draw contour outline
+            ax.plot(pts[:, 0], pts[:, 1], zs, color=color, linewidth=1.5)
+
+            # Draw filled polygon
+            verts = [list(zip(pts[:, 0], pts[:, 1], zs))]
+            poly = Poly3DCollection(verts, alpha=0.3, facecolor=color, edgecolor=color)
+            ax.add_collection3d(poly)
+
+            # Label
+            cx, cy = world_xy.mean(axis=0)
+            ax.text(cx, cy, z, f"#{global_idx}", fontsize=7, color=color)
+
+            global_idx += 1
+
+    ax.set_xlabel("X (mm)")
+    ax.set_ylabel("Y (mm)")
+    ax.set_zlabel("Z (mm)")
+    ax.set_title(f"Island Contours in 3D — {global_idx} islands")
+
+    plt.tight_layout()
+    plt.show()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Island detection debug visualizer")
     parser.add_argument("png_dir", help="Directory containing layer PNGs")
@@ -163,10 +230,20 @@ def main():
                         help="Layer height in mm (default: 0.05)")
     parser.add_argument("--stride", type=int, default=1,
                         help="Layer stride: 1=every layer, 5=every 5th, etc.")
+    parser.add_argument("--display-w", type=float, default=68.04,
+                        help="Display width in mm (default: 68.04)")
+    parser.add_argument("--display-h", type=float, default=120.96,
+                        help="Display height in mm (default: 120.96)")
+    parser.add_argument("--mode", choices=["2d", "3d", "both"], default="both",
+                        help="Visualization mode (default: both)")
     args = parser.parse_args()
 
     all_results, images, png_files = run_detection(args.png_dir, args.stride)
-    visualize_results(all_results, images, png_files, args.layer_height)
+
+    if args.mode in ("2d", "both"):
+        visualize_results(all_results, images, png_files, args.layer_height)
+    if args.mode in ("3d", "both"):
+        visualize_3d(all_results, images, args.layer_height, args.display_w, args.display_h)
 
 
 if __name__ == "__main__":
