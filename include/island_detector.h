@@ -17,7 +17,7 @@ struct BBox3D {
 
 struct Island {
   int label;                        ///< Global ID: 0..N-1, sorted by z
-  std::vector<Point2f> contour;     ///< Pixel-space contour (float)
+  std::vector<Point2f> contour;     ///< World-space contour (mm)
   float z;                          ///< World-space Z (mm)
 };
 
