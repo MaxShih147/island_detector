@@ -1,6 +1,7 @@
 #include "island_detector.h"
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
@@ -10,12 +11,34 @@ namespace fs = std::filesystem;
 
 static void print_usage(const char* prog) {
   std::cerr << "Usage: " << prog
-            << " <png_dir> <layer_height_mm> <min_z> [offset_mm]"
+            << " <png_dir> <layer_height_mm> <min_z> [offset_mm] [--json output.json]"
             << std::endl;
   std::cerr << "  png_dir        : directory containing layer PNGs" << std::endl;
   std::cerr << "  layer_height_mm: layer height in mm" << std::endl;
   std::cerr << "  min_z          : model bottom Z in mm" << std::endl;
   std::cerr << "  offset_mm      : contour offset in mm (default: 0)" << std::endl;
+  std::cerr << "  --json FILE    : write results as JSON for Python visualizer" << std::endl;
+}
+
+static void write_json(const std::vector<island::Island>& islands, const std::string& path) {
+  std::ofstream out(path);
+  out << std::fixed << std::setprecision(4);
+  out << "[\n";
+  for (size_t i = 0; i < islands.size(); ++i) {
+    const auto& isl = islands[i];
+    out << "  {\"label\": " << isl.label
+        << ", \"z\": " << isl.z
+        << ", \"contour\": [";
+    for (size_t j = 0; j < isl.contour.size(); ++j) {
+      if (j > 0) out << ", ";
+      out << "[" << isl.contour[j].x << ", " << isl.contour[j].y << "]";
+    }
+    out << "]}";
+    if (i + 1 < islands.size()) out << ",";
+    out << "\n";
+  }
+  out << "]\n";
+  std::cerr << "Wrote " << islands.size() << " islands to " << path << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -27,7 +50,20 @@ int main(int argc, char* argv[]) {
   const std::string png_dir = argv[1];
   const float layer_height = std::stof(argv[2]);
   const float min_z = std::stof(argv[3]);
-  const float offset_mm = (argc > 4) ? std::stof(argv[4]) : 0.0f;
+
+  float offset_mm = 0.0f;
+  std::string json_path;
+
+  // Parse optional args
+  for (int a = 4; a < argc; ++a) {
+    std::string arg = argv[a];
+    if (arg == "--json" && a + 1 < argc) {
+      json_path = argv[++a];
+    }
+    else {
+      offset_mm = std::stof(arg);
+    }
+  }
 
   // Collect and sort PNG files
   std::vector<std::string> png_files;
@@ -49,7 +85,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  std::cout << "Found " << png_files.size() << " layer PNGs" << std::endl;
+  std::cerr << "Found " << png_files.size() << " layer PNGs" << std::endl;
 
   // Load images
   std::vector<cv::Mat> layer_images;
@@ -74,16 +110,21 @@ int main(int argc, char* argv[]) {
   // Detect
   auto islands = island::detect_islands(layer_images, config);
 
-  // Print results
-  std::cout << "Detected " << islands.size() << " islands"
+  // Print summary
+  std::cerr << "Detected " << islands.size() << " islands"
             << " (offset=" << offset_mm << "mm)" << std::endl;
 
+  // JSON output
+  if (!json_path.empty()) {
+    write_json(islands, json_path);
+  }
+
+  // Console output
   std::cout << std::fixed << std::setprecision(2);
   for (const auto& isl : islands) {
     std::cout << "  [" << isl.label << "] z=" << isl.z
               << "mm, pts=" << isl.contour.size();
 
-    // Print first few contour points (world-space mm)
     int n = std::min(static_cast<int>(isl.contour.size()), 3);
     std::cout << "  contour=[";
     for (int j = 0; j < n; ++j) {
