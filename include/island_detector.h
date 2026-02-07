@@ -26,6 +26,7 @@ struct DetectionConfig {
   float display_height;             ///< Physical display height (mm), e.g. 120.96
   float layer_height;               ///< Layer height (mm), pre-multiplied by stride
   BBox3D model_bbox;                ///< Model bounding box in world space (after transforms)
+  float offset_mm = 0.0f;           ///< Contour offset/expansion in mm (0 = no offset)
 };
 
 /// Detect islands across all provided layer images.
