@@ -1,0 +1,18 @@
+build/
+cmake-build-*/
+.cache/
+compile_commands.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
