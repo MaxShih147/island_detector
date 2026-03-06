@@ -104,14 +104,80 @@ for (const auto& isl : islands) {
 
 ### Input Details
 
-| Parameter | Description |
-|---|---|
-| `layer_images` | Vector of `cv::Mat` (grayscale). Index 0 = bottom layer. Caller handles stride filtering — if you want to skip layers, filter the vector and multiply `layer_height` accordingly. |
-| `display_width` | Physical display width in mm. Maps to PNG width (short axis). |
-| `display_height` | Physical display height in mm. Maps to PNG height (long axis). |
-| `layer_height` | Layer height in mm. If you skip every N layers, pass `N * original_layer_height`. |
-| `model_bbox` | Model bounding box after all transforms (rotation, translation, scale). Used for: `min_z` as base Z, center XY for coordinate offset. |
-| `offset_mm` | Clipper2 polygon expansion in mm. Islands are often tiny — offset makes them visible. 0 = raw contour. |
+#### `layer_images`
+
+Vector of `cv::Mat` (grayscale, `CV_8UC1`). Index 0 = bottom layer (closest to build plate). The library compares consecutive pairs: layer `i` vs layer `i-1`, so layer 0 is always considered supported (on the build plate) and never produces islands.
+
+If you want to skip layers for performance (e.g. check every 5th layer), filter the vector before passing it and multiply `layer_height` accordingly.
+
+#### `DetectionConfig` Fields
+
+| Field | Type | Example | Description |
+|---|---|---|---|
+| `display_width` | `float` | `68.04` | LCD screen physical width in mm |
+| `display_height` | `float` | `120.96` | LCD screen physical height in mm |
+| `layer_height` | `float` | `0.05` | Layer thickness in mm |
+| `model_bbox` | `BBox3D` | `{-10,-15,0, 10,15,30}` | Model bounding box in world space (mm) |
+| `offset_mm` | `float` | `0.5` | Contour outward expansion in mm (0 = disabled) |
+
+**`display_width` / `display_height` — LCD screen physical dimensions**
+
+SLA/DLP printers use an LCD screen to cure resin layer by layer. Each sliced layer PNG covers the full screen area. These values define the physical size of that screen in millimeters, which is needed to convert pixel positions in the PNG to real-world millimeter coordinates.
+
+```
+PNG image (pixels)              LCD screen (mm)
++------------------+            +------------------+
+|                  |  -------> |                  |
+|   1440 x 2560   |   mapped   |  68.04 x 120.96  |
+|     (pixels)     |            |      (mm)        |
++------------------+            +------------------+
+
+pixel_mm_x = display_width  / image_width_px   (mm per pixel, horizontal)
+pixel_mm_y = display_height / image_height_px   (mm per pixel, vertical)
+```
+
+Common values by printer:
+| Printer | `display_width` | `display_height` | Resolution |
+|---|---|---|---|
+| Prusa SL1/SL1S | 68.04 | 120.96 | 1440 x 2560 |
+| Elegoo Mars 2 | 68.04 | 120.96 | 1440 x 2560 |
+| Elegoo Saturn | 128.0 | 80.0 | 3840 x 2400 |
+
+**`layer_height` — layer thickness**
+
+The Z coordinate of each island is computed as:
+
+```
+z = model_bbox.min_z + layer_index * layer_height
+```
+
+If you pre-filter layers (e.g. check every 3rd layer for speed), pass `3 * original_layer_height` so the Z values remain correct.
+
+**`model_bbox` — model bounding box in world space**
+
+The bounding box of the 3D model after all transforms (rotation, translation, scale) have been applied. Used for two purposes:
+
+1. **`min_z`**: The Z height of the model's bottom face. This is the base Z for computing each island's world-space Z coordinate.
+
+2. **Center XY** (`(min_x+max_x)/2`, `(min_y+max_y)/2`): The model's center in the XY plane. The coordinate mapping adds this offset so that island contours are positioned correctly relative to the model in world space.
+
+```
+model_bbox:
+  min = (-10.5, -15.2, 0.0)    center_x = 0.0
+  max = ( 10.5,  15.2, 30.0)   center_y = 0.0    base_z = 0.0
+```
+
+If your model is centered at the origin, set `min_x = min_y = 0`, `max_x = max_y = 0` (center will be 0,0). The CLI tool uses this simplified form.
+
+**`offset_mm` — contour outward expansion**
+
+After converting island contours to world-space mm, optionally expand them outward using Clipper2's `InflatePaths` with round joins. This is useful because:
+
+- Raw island contours can be very small (a few pixels wide)
+- Support structures typically need to cover slightly beyond the island boundary
+- A value of 0.3-0.5 mm is a reasonable default for support placement
+
+Set to `0.0` to get the exact pixel-level contour with no expansion.
 
 ### Output Details
 
